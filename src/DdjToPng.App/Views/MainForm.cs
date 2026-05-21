@@ -8,17 +8,18 @@ public sealed class MainForm : Form
 {
     private readonly MainViewModel _vm;
 
-    private readonly TextBox   _txtSource;
-    private readonly TextBox   _txtOutput;
+    private readonly Button    _btnSelectSource;
+    private readonly Button    _btnSelectOutput;
     private readonly CheckBox  _chkRecursive;
-    private readonly Button    _btnBrowseSource;
-    private readonly Button    _btnBrowseOutput;
     private readonly Button    _btnScan;
     private readonly Button    _btnConvert;
     private readonly Button    _btnCancel;
     private readonly ListBox   _lstFiles;
     private readonly ProgressBar _progressBar;
     private readonly Label     _lblStatus;
+
+    private const string PlaceholderSource = "Click to select source folder…";
+    private const string PlaceholderOutput = "Click to select output folder…";
 
     public MainForm(MainViewModel viewModel)
     {
@@ -27,7 +28,7 @@ public sealed class MainForm : Form
 
         Text            = "DDJ to PNG Converter";
         Size            = new Size(700, 560);
-        MinimumSize     = new Size(600, 500);
+        MinimumSize     = new Size(560, 500);
         FormBorderStyle = FormBorderStyle.Sizable;
         StartPosition   = FormStartPosition.CenterScreen;
 
@@ -40,30 +41,28 @@ public sealed class MainForm : Form
             RowCount    = 7,
             Padding     = new Padding(10),
         };
-        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));  // source row
-        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));  // output row
-        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));  // options row
-        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));  // scan button
+        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));     // source row
+        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));     // output row
+        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));     // options row
+        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));     // scan button
         mainPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // file list
-        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));  // progress
-        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));  // status + action buttons
+        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));     // progress
+        mainPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));     // status + action buttons
 
         Controls.Add(mainPanel);
 
         // Source directory row
-        var sourceRow = BuildBrowseRow("Source directory:", out _txtSource, out _btnBrowseSource);
-        _btnBrowseSource.Click += (_, _) => BrowseDirectory(_txtSource, isSource: true);
-        _txtSource.TextChanged  += (_, _) => _vm.SourceDirectory = _txtSource.Text.Trim();
-        mainPanel.Controls.Add(sourceRow);
+        _btnSelectSource = new Button();
+        mainPanel.Controls.Add(BuildFolderRow("Source directory:", _btnSelectSource, PlaceholderSource));
+        _btnSelectSource.Click += (_, _) => BrowseDirectory(isSource: true);
 
         // Output directory row
-        var outputRow = BuildBrowseRow("Output directory:", out _txtOutput, out _btnBrowseOutput);
-        _btnBrowseOutput.Click += (_, _) => BrowseDirectory(_txtOutput, isSource: false);
-        _txtOutput.TextChanged  += (_, _) => _vm.OutputDirectory = _txtOutput.Text.Trim();
-        mainPanel.Controls.Add(outputRow);
+        _btnSelectOutput = new Button();
+        mainPanel.Controls.Add(BuildFolderRow("Output directory:", _btnSelectOutput, PlaceholderOutput));
+        _btnSelectOutput.Click += (_, _) => BrowseDirectory(isSource: false);
 
         // Options row
-        _chkRecursive = new CheckBox { Text = "Search subdirectories recursively", AutoSize = true, Margin = new Padding(0, 4, 0, 4) };
+        _chkRecursive = new CheckBox { Text = "Search subdirectories recursively", AutoSize = true, Margin = new Padding(0, 6, 0, 4) };
         _chkRecursive.CheckedChanged += (_, _) => _vm.Recursive = _chkRecursive.Checked;
         mainPanel.Controls.Add(_chkRecursive);
 
@@ -148,8 +147,8 @@ public sealed class MainForm : Form
             case nameof(_vm.IsBusy):
                 _btnConvert.Enabled      = !_vm.IsBusy;
                 _btnScan.Enabled         = !_vm.IsBusy;
-                _btnBrowseSource.Enabled = !_vm.IsBusy;
-                _btnBrowseOutput.Enabled = !_vm.IsBusy;
+                _btnSelectSource.Enabled = !_vm.IsBusy;
+                _btnSelectOutput.Enabled = !_vm.IsBusy;
                 _btnCancel.Enabled       = _vm.IsBusy;
                 break;
             case nameof(_vm.StatusMessage):
@@ -163,17 +162,19 @@ public sealed class MainForm : Form
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private void BrowseDirectory(TextBox target, bool isSource)
+    private void BrowseDirectory(bool isSource)
     {
-        var dialog = new OpenFolderDialog
+        var btn      = isSource ? _btnSelectSource : _btnSelectOutput;
+        var current  = isSource ? _vm.SourceDirectory : _vm.OutputDirectory;
+        var dialog   = new OpenFolderDialog
         {
             Title            = isSource ? "Select source directory" : "Select output directory",
-            InitialDirectory = string.IsNullOrWhiteSpace(target.Text) ? null : target.Text,
+            InitialDirectory = string.IsNullOrWhiteSpace(current) ? null : current,
         };
 
         if (dialog.ShowDialog() == true)
         {
-            target.Text = dialog.FolderName;
+            btn.Text = dialog.FolderName;
             if (isSource) _vm.SourceDirectory = dialog.FolderName;
             else          _vm.OutputDirectory  = dialog.FolderName;
         }
@@ -188,13 +189,37 @@ public sealed class MainForm : Form
         _lstFiles.EndUpdate();
     }
 
-    private static Panel BuildBrowseRow(string label, out TextBox textBox, out Button button)
+    private static TableLayoutPanel BuildFolderRow(string label, Button folderButton, string placeholder)
     {
-        var panel = new Panel { Dock = DockStyle.Fill, Height = 34, Margin = new Padding(0, 2, 0, 2) };
-        var lbl   = new Label  { Text = label, Left = 0, Top = 8, Width = 130, TextAlign = ContentAlignment.MiddleLeft };
-        textBox   = new TextBox { Left = 134, Top = 5, Width = 420, Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top };
-        button    = new Button  { Text = "Browse…", Left = 560, Top = 4, Width = 80, Anchor = AnchorStyles.Right | AnchorStyles.Top };
-        panel.Controls.AddRange([lbl, textBox, button]);
-        return panel;
+        var row = new TableLayoutPanel
+        {
+            Dock        = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount    = 1,
+            AutoSize    = true,
+            Margin      = new Padding(0, 2, 0, 2),
+        };
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        var lbl = new Label
+        {
+            Text      = label,
+            Dock      = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
+            AutoSize  = false,
+        };
+
+        folderButton.Text      = placeholder;
+        folderButton.Dock      = DockStyle.Fill;
+        folderButton.Height    = 30;
+        folderButton.TextAlign = ContentAlignment.MiddleLeft;
+        folderButton.Margin    = new Padding(0, 0, 0, 4);
+        // Truncate long paths with ellipsis on the left
+        folderButton.AutoEllipsis = true;
+
+        row.Controls.Add(lbl, 0, 0);
+        row.Controls.Add(folderButton, 1, 0);
+        return row;
     }
 }
