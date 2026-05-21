@@ -53,11 +53,13 @@ public sealed class MainForm : Form
         // Source directory row
         var sourceRow = BuildBrowseRow("Source directory:", out _txtSource, out _btnBrowseSource);
         _btnBrowseSource.Click += (_, _) => BrowseDirectory(_txtSource, isSource: true);
+        _txtSource.TextChanged  += (_, _) => _vm.SourceDirectory = _txtSource.Text.Trim();
         mainPanel.Controls.Add(sourceRow);
 
         // Output directory row
         var outputRow = BuildBrowseRow("Output directory:", out _txtOutput, out _btnBrowseOutput);
         _btnBrowseOutput.Click += (_, _) => BrowseDirectory(_txtOutput, isSource: false);
+        _txtOutput.TextChanged  += (_, _) => _vm.OutputDirectory = _txtOutput.Text.Trim();
         mainPanel.Controls.Add(outputRow);
 
         // Options row
@@ -108,12 +110,32 @@ public sealed class MainForm : Form
 
     private void OnScanClicked(object? sender, EventArgs e)
     {
+        if (string.IsNullOrWhiteSpace(_vm.SourceDirectory))
+        {
+            MessageBox.Show("Select a source directory first.", "DDJ to PNG", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
         _vm.ScanFiles();
         RefreshFileList();
     }
 
     private async void OnConvertClicked(object? sender, EventArgs e)
     {
+        if (string.IsNullOrWhiteSpace(_vm.SourceDirectory))
+        {
+            MessageBox.Show("Select a source directory first.", "DDJ to PNG", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_vm.OutputDirectory))
+        {
+            MessageBox.Show("Select an output directory first.", "DDJ to PNG", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        if (_vm.InputFiles.Count == 0)
+        {
+            MessageBox.Show("No DDJ files found. Click 'Scan for DDJ Files' first.", "DDJ to PNG", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
         await _vm.ConvertAsync();
     }
 

@@ -36,6 +36,8 @@ public sealed class ConversionService : IConversionService
             CancellationToken      = cancellationToken,
         };
 
+        var reportEvery = Math.Max(1, total / 200);   // at most ~200 UI updates
+
         await Parallel.ForEachAsync(
             inputFiles.Select((path, idx) => (path, idx)),
             parallelOptions,
@@ -44,7 +46,8 @@ public sealed class ConversionService : IConversionService
                 ct.ThrowIfCancellationRequested();
                 results[item.idx] = await ConvertSingleAsync(item.path, options, ct);
                 var done = Interlocked.Increment(ref completed);
-                progress?.Report((done, total));
+                if (done % reportEvery == 0 || done == total)
+                    progress?.Report((done, total));
             });
 
         return results;
