@@ -67,8 +67,10 @@ public sealed class ConversionService : IConversionService
                 using var bitmap = _decoder.Decode(ddsBytes);
                 ct.ThrowIfCancellationRequested();
 
-                var fileName   = Path.GetFileNameWithoutExtension(inputPath) + ".png";
-                var outputPath = Path.Combine(options.OutputDirectory, fileName);
+                var relPath = string.IsNullOrEmpty(options.InputDirectory)
+                    ? Path.GetFileNameWithoutExtension(inputPath) + ".png"
+                    : Path.ChangeExtension(Path.GetRelativePath(options.InputDirectory, inputPath), ".png");
+                var outputPath = Path.Combine(options.OutputDirectory, relPath);
                 var saved      = _exporter.Export(bitmap, outputPath);
 
                 return new ConversionResult(inputPath, saved, Success: true);

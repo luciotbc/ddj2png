@@ -88,6 +88,25 @@ public sealed class ConversionServiceTests : IDisposable
         results.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task ConvertAsync_Should_Preserve_Relative_Path_Under_OutputDirectory()
+    {
+        var inputDir  = Path.Combine(_tempDir, "input");
+        var outputDir = Path.Combine(_tempDir, "output");
+        var inputFile = Path.Combine(inputDir, "Data", "icon", "skills", "ice.ddj");
+        var options   = new ConversionOptions(outputDir, InputDirectory: inputDir);
+        SetupSuccessfulPipeline();
+
+        string? capturedOutputPath = null;
+        _exporter.Setup(e => e.Export(It.IsAny<Bitmap>(), It.IsAny<string>()))
+                 .Returns<Bitmap, string>((_, p) => { capturedOutputPath = p; return p; });
+
+        await _sut.ConvertAsync([inputFile], options);
+
+        var expectedPath = Path.Combine(outputDir, "Data", "icon", "skills", "ice.png");
+        capturedOutputPath.Should().Be(expectedPath);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private void SetupSuccessfulPipeline(int delayMs = 0)

@@ -95,7 +95,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            var options = new ConversionOptions(OutputDirectory);
+            var options = new ConversionOptions(OutputDirectory, InputDirectory: SourceDirectory);
             var progress = new Progress<(int completed, int total)>(p =>
             {
                 Progress      = p.total > 0 ? (int)(100.0 * p.completed / p.total) : 0;
