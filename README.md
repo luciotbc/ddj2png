@@ -1,12 +1,16 @@
-# ddj2png
+# 🚀 ddj2png
 
 > Batch-convert **DDJ** image files from Silkroad Online into standard **PNG** files — fast, parallel, and folder-structure-aware. Think of it as a WinRAR-style extractor, but for `.ddj` textures.
 
-![ddj2png main screen](ddj2png_printscreen.png)
+<p align="center">
+  <img alt="Screen Preview of ddj2png" src="ddj2png_printscreen.png">
+  <br>
+  <em>Screen Preview of ddj2png</em>
+</p>
 
 ---
 
-## What is it?
+## ❓ What is it?
 
 Silkroad Online stores its UI and skill textures as `.ddj` files — a proprietary container that is just a standard DDS (DirectDraw Surface) file with a 20-byte custom header prepended. **ddj2png** strips that header and decodes the DDS payload into a regular PNG, for every file in a folder tree, in one click.
 
@@ -14,7 +18,7 @@ It is designed for bulk work: point it at your unpacked PK2 folder (thousands of
 
 ---
 
-## Quick start
+## ⚡ Quick start
 
 1. **Download** the latest `ddj2png.exe` from [Releases](../../releases) (single-file, no install needed).
 2. Run it — no .NET runtime required in the self-contained build.
@@ -22,9 +26,9 @@ It is designed for bulk work: point it at your unpacked PK2 folder (thousands of
 
 ---
 
-## How to use
+## 🛠️ How to use
 
-### Step-by-step
+### ✅ Step-by-step
 
 | # | What to do | Notes |
 |---|-----------|-------|
@@ -35,7 +39,7 @@ It is designed for bulk work: point it at your unpacked PK2 folder (thousands of
 | 5 | Click **Convert** | A progress bar tracks completion; status bar shows `x/total` in real time |
 | 6 | *(optional)* Click **Cancel** | Stops in-flight conversions gracefully — already-saved files are kept |
 
-### Folder structure is preserved
+### 🗂️ Folder structure is preserved
 
 Output files mirror the input tree, so you never lose track of where a texture came from:
 
@@ -48,7 +52,7 @@ This makes it safe to diff two conversion runs, or to drop the output next to th
 
 ---
 
-## What it converts
+## 🔄 What it converts
 
 Supports every DDS pixel format used by the Silkroad client:
 
@@ -67,7 +71,7 @@ Supports every DDS pixel format used by the Silkroad client:
 
 ---
 
-## How the conversion works
+## ⚙️ How the conversion works
 
 ```
 DDJ file on disk
@@ -89,7 +93,7 @@ PNG file on disk
 
 ---
 
-## Building from source
+## 🧱 Building from source
 
 **Requirements:** [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0), Windows.
 
@@ -110,7 +114,7 @@ dotnet test
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 Clean Architecture with a strict Core / UI split:
 
@@ -131,3 +135,8 @@ Clean Architecture with a strict Core / UI split:
 ```
 
 Every service and ViewModel was built test-first (red → green → refactor). All 43 tests run without touching the filesystem except for `PngExportService` integration tests.
+
+
+## ⚖️ License
+
+This work **ddj2png** is published under [MIT](MIT-LICENSE) License.

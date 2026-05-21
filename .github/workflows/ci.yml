@@ -1,0 +1,59 @@
+# CI workflow — runs on every pull request targeting main.
+# Goal: guarantee no broken code is merged into the main branch.
+#
+# NOTE: windows-latest is required (not ubuntu-latest) because the app targets
+# net10.0-windows and uses WinForms + WPF, which are Windows-only frameworks.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+# Cancel any in-progress run for the same PR when a new commit is pushed.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  SOLUTION: 'ddj2png.slnx'
+  TEST_PROJECT: 'tests/DdjToPng.Core.Tests/DdjToPng.Core.Tests.csproj'
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # Cache NuGet packages to speed up subsequent runs.
+      # Key includes a hash of all .csproj files so the cache is invalidated
+      # whenever a dependency changes.
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.SOLUTION }}
+
+      - name: Build (Release)
+        run: dotnet build ${{ env.SOLUTION }} --no-restore --configuration Release
+
+      - name: Run unit tests
+        run: >
+          dotnet test ${{ env.TEST_PROJECT }}
+          --no-build
+          --configuration Release
+          --logger "console;verbosity=normal"

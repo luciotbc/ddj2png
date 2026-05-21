@@ -1,0 +1,284 @@
+# Release workflow — runs automatically on every push to main.
+#
+# Pipeline stages:
+#   1. test    — restore and run all unit tests; aborts if any fail.
+#   2. release — publish single-file exe, auto-bump semver PATCH, create git
+#                tag, upload assets, and publish a GitHub Release.
+#
+# Versioning rules:
+#   • No existing tags  → starts at v1.0.0
+#   • Existing tag      → increments PATCH  (e.g. v1.0.3 → v1.0.4)
+#   To bump MINOR or MAJOR, create the tag manually before merging.
+#
+# NOTE: windows-latest is required because the app targets net10.0-windows.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Do not cancel in-progress releases; let each one finish to avoid partial
+# releases or orphaned tags.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# Required to create tags, GitHub Releases, and upload release assets.
+permissions:
+  contents: write
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  APP_NAME: 'ddj2png'
+  APP_PROJECT: 'src/DdjToPng.App/DdjToPng.App.csproj'
+  TEST_PROJECT: 'tests/DdjToPng.Core.Tests/DdjToPng.Core.Tests.csproj'
+  PUBLISH_DIR: 'publish'
+  ARTIFACTS_DIR: 'artifacts'
+
+# ---------------------------------------------------------------------------
+jobs:
+# ---------------------------------------------------------------------------
+
+  # --------------------------------------------------------------------------
+  # Stage 1 — Tests
+  # A failed test aborts the entire pipeline before any artifact is built.
+  # --------------------------------------------------------------------------
+  test:
+    name: Run Tests
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.TEST_PROJECT }}
+
+      - name: Run unit tests
+        run: >
+          dotnet test ${{ env.TEST_PROJECT }}
+          --no-restore
+          --configuration Release
+          --logger "console;verbosity=normal"
+
+  # --------------------------------------------------------------------------
+  # Stage 2 — Build, version, tag, and release
+  # --------------------------------------------------------------------------
+  release:
+    name: Build & Release
+    runs-on: windows-latest
+    needs: test
+
+    steps:
+      - name: Checkout repository (full history for tag inspection)
+        uses: actions/checkout@v4
+        with:
+          # Full history is needed so git describe can find existing tags and
+          # git log can generate accurate per-release changelogs.
+          fetch-depth: 0
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      # ----------------------------------------------------------------------
+      # Calculate the next semantic version by reading the latest git tag.
+      # Outputs:
+      #   new_version   — full tag string, e.g. "v1.0.4"
+      #   version_number — bare number, e.g. "1.0.4"
+      #   latest_tag    — the previous tag (empty string if none)
+      # ----------------------------------------------------------------------
+      - name: Calculate next version
+        id: version
+        shell: bash
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -z "$LATEST_TAG" ]; then
+            NEW_VERSION="v1.0.0"
+          else
+            VERSION="${LATEST_TAG#v}"
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+            NEW_PATCH=$((PATCH + 1))
+            NEW_VERSION="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+          fi
+
+          VERSION_NUMBER="${NEW_VERSION#v}"
+
+          echo "new_version=${NEW_VERSION}"     >> "$GITHUB_OUTPUT"
+          echo "version_number=${VERSION_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=${LATEST_TAG}"       >> "$GITHUB_OUTPUT"
+
+          echo "Latest tag : ${LATEST_TAG:-<none>}"
+          echo "Next version: ${NEW_VERSION}"
+
+      # Guard against accidental re-runs that would try to create a duplicate
+      # tag.  All subsequent steps are skipped if the tag already exists.
+      - name: Check for duplicate tag
+        id: tag_check
+        shell: bash
+        run: |
+          TAG="${{ steps.version.outputs.new_version }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Tag $TAG already exists — release skipped."
+          else
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+            echo "Tag $TAG is new — proceeding with release."
+          fi
+
+      - name: Restore dependencies
+        if: steps.tag_check.outputs.tag_exists == 'false'
+        run: dotnet restore ${{ env.APP_PROJECT }}
+
+      # Publish a self-contained, single-file executable for win-x64.
+      # Matches the publish command documented in CLAUDE.md.
+      - name: Publish release build
+        if: steps.tag_check.outputs.tag_exists == 'false'
+        run: >
+          dotnet publish ${{ env.APP_PROJECT }}
+          --no-restore
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          --output ${{ env.PUBLISH_DIR }}
+
+      # Package the exe into the three distribution formats required by the
+      # release spec:  plain exe  |  .zip  |  .tar.gz
+      - name: Package release artifacts
+        if: steps.tag_check.outputs.tag_exists == 'false'
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.new_version }}"
+          $app     = "${{ env.APP_NAME }}"
+          $pub     = "${{ env.PUBLISH_DIR }}"
+          $out     = "${{ env.ARTIFACTS_DIR }}"
+
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+
+          # 1. Standalone executable
+          Copy-Item "$pub\$app.exe" "$out\$app.$version.exe"
+
+          # 2. ZIP archive
+          Compress-Archive -Path "$pub\*" -DestinationPath "$out\$app.$version.zip"
+
+          # 3. TAR.GZ archive (tar ships with Windows Server 2019+)
+          tar -czf "$out\$app.$version.tar.gz" -C $pub .
+
+          Write-Output "Artifacts:"
+          Get-ChildItem $out | ForEach-Object { Write-Output "  $_" }
+
+      # Build a human-readable changelog from commits since the previous tag.
+      # If there is no previous tag, all commits are included (capped at 50).
+      - name: Generate release notes
+        id: release_notes
+        if: steps.tag_check.outputs.tag_exists == 'false'
+        shell: bash
+        run: |
+          LATEST_TAG="${{ steps.version.outputs.latest_tag }}"
+
+          if [ -z "$LATEST_TAG" ]; then
+            COMMITS=$(git log --format="- \`%h\` %s" | head -50)
+          else
+            COMMITS=$(git log "${LATEST_TAG}..HEAD" --format="- \`%h\` %s")
+          fi
+
+          if [ -z "$COMMITS" ]; then
+            COMMITS="- No new commits since last release."
+          fi
+
+          # Use a unique delimiter to safely pass multi-line output.
+          {
+            echo "release_notes<<RELEASE_NOTES_DELIMITER"
+            echo "$COMMITS"
+            echo "RELEASE_NOTES_DELIMITER"
+          } >> "$GITHUB_OUTPUT"
+
+      # Create and push the new semver tag so the GitHub Release can reference it.
+      - name: Create and push git tag
+        if: steps.tag_check.outputs.tag_exists == 'false'
+        shell: bash
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.version.outputs.new_version }}"
+          git push origin "${{ steps.version.outputs.new_version }}"
+
+      # Publish the GitHub Release with all three asset formats.
+      # softprops/action-gh-release is a well-maintained, widely-used action.
+      - name: Create GitHub Release
+        if: steps.tag_check.outputs.tag_exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.new_version }}
+          name: "${{ env.APP_NAME }} ${{ steps.version.outputs.new_version }}"
+          body: |
+            ## What's new
+
+            ${{ steps.release_notes.outputs.release_notes }}
+
+            ---
+            Built from commit `${{ github.sha }}` · branch `${{ github.ref_name }}`
+          files: |
+            ${{ env.ARTIFACTS_DIR }}/${{ env.APP_NAME }}.${{ steps.version.outputs.new_version }}.exe
+            ${{ env.ARTIFACTS_DIR }}/${{ env.APP_NAME }}.${{ steps.version.outputs.new_version }}.zip
+            ${{ env.ARTIFACTS_DIR }}/${{ env.APP_NAME }}.${{ steps.version.outputs.new_version }}.tar.gz
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+
+      # Retain the artifacts inside the workflow run for 30 days, independent
+      # of the GitHub Release (useful for internal audits or re-publishing).
+      - name: Upload artifacts to workflow run
+        if: steps.tag_check.outputs.tag_exists == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-${{ steps.version.outputs.new_version }}
+          path: ${{ env.ARTIFACTS_DIR }}/
+          retention-days: 30
+
+      # Write a human-readable summary to the Actions run page.
+      - name: Write job summary
+        if: steps.tag_check.outputs.tag_exists == 'false'
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.new_version }}"
+          APP="${{ env.APP_NAME }}"
+          {
+            echo "## Release Summary"
+            echo ""
+            echo "| Field   | Value |"
+            echo "|---------|-------|"
+            echo "| App     | \`${APP}\` |"
+            echo "| Version | \`${VERSION}\` |"
+            echo "| Commit  | \`${{ github.sha }}\` |"
+            echo ""
+            echo "### Assets attached to release"
+            echo "- \`${APP}.${VERSION}.exe\`"
+            echo "- \`${APP}.${VERSION}.zip\`"
+            echo "- \`${APP}.${VERSION}.tar.gz\`"
+          } >> "$GITHUB_STEP_SUMMARY"
