@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using DdjToPng.Core.ViewModels;
+using Microsoft.Win32;
 
 namespace DdjToPng.App.Views;
 
@@ -142,15 +143,17 @@ public sealed class MainForm : Form
 
     private void BrowseDirectory(TextBox target, bool isSource)
     {
-        using var dialog = new FolderBrowserDialog { Description = isSource ? "Select source directory" : "Select output directory" };
-        if (!string.IsNullOrWhiteSpace(target.Text))
-            dialog.InitialDirectory = target.Text;
-
-        if (dialog.ShowDialog(this) == DialogResult.OK)
+        var dialog = new OpenFolderDialog
         {
-            target.Text = dialog.SelectedPath;
-            if (isSource) _vm.SourceDirectory = dialog.SelectedPath;
-            else          _vm.OutputDirectory  = dialog.SelectedPath;
+            Title            = isSource ? "Select source directory" : "Select output directory",
+            InitialDirectory = string.IsNullOrWhiteSpace(target.Text) ? null : target.Text,
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            target.Text = dialog.FolderName;
+            if (isSource) _vm.SourceDirectory = dialog.FolderName;
+            else          _vm.OutputDirectory  = dialog.FolderName;
         }
     }
 
