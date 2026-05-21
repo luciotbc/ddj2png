@@ -142,38 +142,16 @@ public sealed class MainForm : Form
 
     private void BrowseDirectory(TextBox target, bool isSource)
     {
-        var title   = isSource ? "Select source directory" : "Select output directory";
-        var initial = string.IsNullOrWhiteSpace(target.Text) ? null : target.Text;
+        using var dialog = new FolderBrowserDialog { Description = isSource ? "Select source directory" : "Select output directory" };
+        if (!string.IsNullOrWhiteSpace(target.Text))
+            dialog.InitialDirectory = target.Text;
 
-        // Use the modern Windows Explorer folder picker (IFileOpenDialog via COM).
-        // Falls back to FolderBrowserDialog if the COM object is unavailable.
-        string? selected;
-        try
+        if (dialog.ShowDialog(this) == DialogResult.OK)
         {
-            selected = WindowsFolderPicker.Show(Handle, title, initial);
+            target.Text = dialog.SelectedPath;
+            if (isSource) _vm.SourceDirectory = dialog.SelectedPath;
+            else          _vm.OutputDirectory  = dialog.SelectedPath;
         }
-        catch (InvalidOperationException)
-        {
-            selected = BrowseWithLegacyDialog(title, initial);
-        }
-
-        if (selected is null) return;
-
-        target.Text = selected;
-        if (isSource) _vm.SourceDirectory = selected;
-        else          _vm.OutputDirectory  = selected;
-    }
-
-    private static string? BrowseWithLegacyDialog(string title, string? initialDirectory)
-    {
-        using var dialog = new FolderBrowserDialog
-        {
-            UseDescriptionForTitle = true,
-            Description            = title,
-            ShowNewFolderButton    = true,
-            InitialDirectory       = initialDirectory ?? string.Empty,
-        };
-        return dialog.ShowDialog() == DialogResult.OK ? dialog.SelectedPath : null;
     }
 
     private void RefreshFileList()
