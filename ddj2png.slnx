@@ -1,3 +1,5 @@
 <Solution>
-  <Project Path="ddj2png/ddj2png.csproj" />
+  <Project Path="src/DdjToPng.Core/DdjToPng.Core.csproj" />
+  <Project Path="src/DdjToPng.App/DdjToPng.App.csproj" />
+  <Project Path="tests/DdjToPng.Core.Tests/DdjToPng.Core.Tests.csproj" />
 </Solution>
