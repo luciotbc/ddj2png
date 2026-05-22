@@ -152,7 +152,7 @@ jobs:
 
       - name: Restore dependencies
         if: steps.tag_check.outputs.tag_exists == 'false'
-        run: dotnet restore ${{ env.APP_PROJECT }}
+        run: dotnet restore ${{ env.APP_PROJECT }} --runtime win-x64
 
       # Publish a self-contained, single-file executable for win-x64.
       # Matches the publish command documented in CLAUDE.md.
